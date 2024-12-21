@@ -1,0 +1,170 @@
+import React, { useEffect, useState, useRef } from "react";
+
+const Feed = () => {
+  const [currentTab, setCurrentTab] = useState("forYou"); // Default to "For You"
+  const [videos, setVideos] = useState([]); // Store video data
+  const [loading, setLoading] = useState(false); // Loading state
+  const [hasMore, setHasMore] = useState(true); // Whether there are more videos to load
+  const [isLoggedIn, setIsLoggedIn] = useState(!!localStorage.getItem("token")); // Check if logged in
+  const videoRefs = useRef([]); // Store refs for video elements
+
+  const fetchVideos = async () => {
+    const token = localStorage.getItem("token"); // Retrieve token
+    if (!token) {
+      console.error("No token found! User is not logged in.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const skip = videos.length; // Number of videos already loaded
+      const limit = 5; // Number of videos per request
+      const endpoint = `/feed/${currentTab === "forYou" ? "for-you" : currentTab}`; // Determine the correct endpoint
+
+      const response = await fetch(`http://192.168.40.19:8000/video${endpoint}?skip=${skip}&limit=${limit}`, {
+        headers: {
+          Authorization: `Bearer ${token}`, // Include Authorization header
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch videos");
+      }
+
+      const data = await response.json();
+      if (data.videos.length === 0) {
+        setHasMore(false); // No more videos to load
+      } else {
+        setVideos((prev) => [...prev, ...data.videos]); // Append new videos
+      }
+    } catch (error) {
+      console.error("Error fetching video feed:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch videos when the component mounts or when the tab changes
+  useEffect(() => {
+    setVideos([]); // Clear videos when switching tabs
+    setHasMore(true); // Reset hasMore
+    fetchVideos();
+  }, [currentTab]);
+
+  // Handle autoplay for the video currently in the viewport
+  useEffect(() => {
+    const handleObserver = (entries) => {
+      entries.forEach((entry) => {
+        const video = entry.target;
+        if (entry.isIntersecting) {
+          video.play();
+        } else {
+          video.pause();
+        }
+      });
+    };
+
+    const observer = new IntersectionObserver(handleObserver, { threshold: 0.9 }); // Play video when 90% visible
+
+    videoRefs.current.forEach((video) => {
+      if (video) observer.observe(video);
+    });
+
+    return () => observer.disconnect();
+  }, [videos]);
+
+  return (
+    <div className="flex h-screen bg-black">
+      {/* Left Sidebar */}
+      <div className="w-20 bg-white flex flex-col items-center py-4 border-r justify-between">
+        <div>
+          {/* Logo */}
+          <img src="/logo.png" alt="Logo" className="w-10 h-10 mb-4" />
+          {/* Links */}
+          <nav className="flex flex-col gap-4">
+            <button
+              onClick={() => setCurrentTab("forYou")}
+              className={`text-gray-800 hover:text-black text-xl ${currentTab === "forYou" && "font-bold"}`}
+            >
+              For You
+            </button>
+            <button
+              onClick={() => setCurrentTab("following")}
+              className={`text-gray-800 hover:text-black text-xl ${currentTab === "following" && "font-bold"}`}
+            >
+              Following
+            </button>
+            <button
+              onClick={() => setCurrentTab("podcasts")}
+              className={`text-gray-800 hover:text-black text-xl ${currentTab === "podcasts" && "font-bold"}`}
+            >
+              Podcasts
+            </button>
+          </nav>
+        </div>
+        <div>
+          {isLoggedIn && (
+            <button className="text-gray-800 hover:text-black text-xl mb-4">Profile</button>
+          )}
+          <button className="text-gray-800 hover:text-black text-xl mb-4">Register</button>
+          <button className="text-gray-800 hover:text-black text-xl">Login</button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-y-scroll snap-y snap-mandatory relative">
+        {/* Toggles at Top */}
+        <div className="absolute top-0 w-full flex justify-center bg-black bg-opacity-50 z-10 py-2">
+          <button
+            onClick={() => setCurrentTab("forYou")}
+            className={`px-4 py-2 mx-2 text-white rounded ${currentTab === "forYou" ? "bg-blue-500" : "bg-gray-700"}`}
+          >
+            For You
+          </button>
+          <button
+            onClick={() => setCurrentTab("following")}
+            className={`px-4 py-2 mx-2 text-white rounded ${currentTab === "following" ? "bg-blue-500" : "bg-gray-700"}`}
+          >
+            Following
+          </button>
+          <button
+            onClick={() => setCurrentTab("podcasts")}
+            className={`px-4 py-2 mx-2 text-white rounded ${currentTab === "podcasts" ? "bg-blue-500" : "bg-gray-700"}`}
+          >
+            Podcasts
+          </button>
+        </div>
+
+        {/* Video Feed */}
+        {videos.map((video, index) => (
+          <div
+            key={video.id}
+            className="relative flex justify-center items-center h-screen snap-center"
+          >
+            {/* Video Player */}
+            <video
+              ref={(el) => (videoRefs.current[index] = el)} // Attach ref to each video
+              controls={false}
+              muted
+              loop
+              playsInline
+              src={`http://192.168.40.19:8000${video.url}`}
+              className="w-full h-full object-cover"
+            ></video>
+
+            {/* Video Metadata */}
+            <div className="absolute bottom-10 left-5 text-white z-10">
+              <h2 className="text-xl font-bold">{video.title}</h2>
+              <p className="text-sm">{video.description}</p>
+            </div>
+          </div>
+        ))}
+        {loading && <p className="text-center text-gray-500">Loading more videos...</p>}
+        {!hasMore && <p className="text-center text-gray-500">No more videos to display.</p>}
+      </div>
+    </div>
+  );
+};
+
+export default Feed;
